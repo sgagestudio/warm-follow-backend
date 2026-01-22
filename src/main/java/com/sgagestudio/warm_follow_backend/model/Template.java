@@ -12,6 +12,9 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "templates")
@@ -19,6 +22,9 @@ public class Template {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
 
     @Column(name = "owner_user_id", nullable = false)
     private UUID ownerUserId;
@@ -35,6 +41,13 @@ public class Template {
     @Column(nullable = false)
     private Channel channel;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private JsonNode variables;
+
+    @Column(nullable = false)
+    private int version;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -48,6 +61,9 @@ public class Template {
             createdAt = now;
         }
         updatedAt = now;
+        if (version == 0) {
+            version = 1;
+        }
     }
 
     @PreUpdate
@@ -69,6 +85,14 @@ public class Template {
 
     public void setOwnerUserId(UUID ownerUserId) {
         this.ownerUserId = ownerUserId;
+    }
+
+    public UUID getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(UUID workspaceId) {
+        this.workspaceId = workspaceId;
     }
 
     public String getName() {
@@ -101,6 +125,22 @@ public class Template {
 
     public void setChannel(Channel channel) {
         this.channel = channel;
+    }
+
+    public JsonNode getVariables() {
+        return variables;
+    }
+
+    public void setVariables(JsonNode variables) {
+        this.variables = variables;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
     }
 
     public Instant getCreatedAt() {

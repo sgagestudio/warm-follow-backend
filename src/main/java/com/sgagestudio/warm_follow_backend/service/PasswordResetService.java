@@ -5,6 +5,7 @@ import com.sgagestudio.warm_follow_backend.config.AuthProperties;
 import com.sgagestudio.warm_follow_backend.dto.UserResponse;
 import com.sgagestudio.warm_follow_backend.model.AuthType;
 import com.sgagestudio.warm_follow_backend.model.User;
+import com.sgagestudio.warm_follow_backend.model.WorkspaceMembership;
 import com.sgagestudio.warm_follow_backend.repository.UserRepository;
 import com.sgagestudio.warm_follow_backend.util.ApiException;
 import com.sgagestudio.warm_follow_backend.util.TokenHasher;
@@ -25,6 +26,7 @@ public class PasswordResetService {
     private final RefreshTokenService refreshTokenService;
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
+    private final WorkspaceContextService workspaceContextService;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<String, ResetTokenEntry> tokens = new ConcurrentHashMap<>();
 
@@ -33,13 +35,15 @@ public class PasswordResetService {
             UserRepository userRepository,
             RefreshTokenService refreshTokenService,
             PasswordEncoder passwordEncoder,
-            AuditService auditService
+            AuditService auditService,
+            WorkspaceContextService workspaceContextService
     ) {
         this.authProperties = authProperties;
         this.userRepository = userRepository;
         this.refreshTokenService = refreshTokenService;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public Optional<String> createResetToken(String email) {
@@ -54,7 +58,8 @@ public class PasswordResetService {
         String rawToken = generateToken();
         String hash = TokenHasher.sha256(rawToken);
         tokens.put(hash, new ResetTokenEntry(user.getId(), Instant.now().plus(authProperties.getResetTokenTtl())));
-        auditService.audit("user", user.getId().toString(), "auth.password_forgot", null, null);
+        WorkspaceMembership membership = workspaceContextService.resolveDefaultMembership(user.getId());
+        auditService.audit(membership.getWorkspaceId(), "user", user.getId().toString(), "auth.password_forgot", null, null);
         return Optional.of(rawToken);
     }
 
@@ -73,12 +78,13 @@ public class PasswordResetService {
         userRepository.save(user);
         refreshTokenService.revokeAllForUser(user.getId());
         tokens.remove(hash);
-        auditService.audit("user", user.getId().toString(), "auth.password_reset", null, new UserResponse(
+        WorkspaceMembership membership = workspaceContextService.resolveDefaultMembership(user.getId());
+        auditService.audit(membership.getWorkspaceId(), "user", user.getId().toString(), "auth.password_reset", null, new UserResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getName(),
-                user.getProvider().name(),
-                user.getAuthType().name()
+                user.getStatus().name(),
+                user.getLastLogin()
         ));
     }
 

@@ -20,6 +20,9 @@ public class ComplianceAssessment {
     @UuidGenerator
     private UUID id;
 
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
     @Column(name = "owner_user_id", nullable = false)
     private UUID ownerUserId;
 
@@ -54,6 +57,14 @@ public class ComplianceAssessment {
 
     public void setOwnerUserId(UUID ownerUserId) {
         this.ownerUserId = ownerUserId;
+    }
+
+    public UUID getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(UUID workspaceId) {
+        this.workspaceId = workspaceId;
     }
 
     public JsonNode getDetails() {

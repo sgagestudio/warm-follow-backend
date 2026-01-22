@@ -6,6 +6,8 @@ public record AuthenticatedUser(
         UUID userId,
         String email,
         String provider,
-        String authType
+        String authType,
+        UUID workspaceId,
+        String role
 ) {
 }

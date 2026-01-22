@@ -32,17 +32,20 @@ public class TransactionService {
     private final DeliveryRepository deliveryRepository;
     private final SecurityUtils securityUtils;
     private final TimeService timeService;
+    private final WorkspaceContextService workspaceContextService;
 
     public TransactionService(
             TransactionRepository transactionRepository,
             DeliveryRepository deliveryRepository,
             SecurityUtils securityUtils,
-            TimeService timeService
+            TimeService timeService,
+            WorkspaceContextService workspaceContextService
     ) {
         this.transactionRepository = transactionRepository;
         this.deliveryRepository = deliveryRepository;
         this.securityUtils = securityUtils;
         this.timeService = timeService;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public PagedResponse<TransactionResponse> listTransactions(
@@ -54,7 +57,7 @@ public class TransactionService {
             int limit,
             long offset
     ) {
-        UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         List<UUID> transactionIdsFilter;
         if (customerId != null) {
             transactionIdsFilter = deliveryRepository.findDistinctTransactionIdsByCustomerId(customerId);
@@ -67,7 +70,7 @@ public class TransactionService {
         Pageable pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
         Specification<Transaction> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("reminder").get("ownerUserId"), ownerId));
+            predicates.add(cb.equal(root.get("workspaceId"), workspaceId));
             if (reminderId != null) {
                 predicates.add(cb.equal(root.get("reminder").get("id"), reminderId));
             }
@@ -97,7 +100,8 @@ public class TransactionService {
     }
 
     public TransactionResponse getTransaction(UUID transactionId) {
-        Transaction tx = transactionRepository.findByIdAndReminder_OwnerUserId(transactionId, securityUtils.requireCurrentUserId())
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        Transaction tx = transactionRepository.findByIdAndWorkspaceId(transactionId, workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSACTION_NOT_FOUND", "Transaction not found"));
         Map<UUID, Map<String, Long>> counts = loadCounts(List.of(tx));
         return toResponse(tx, counts.getOrDefault(tx.getId(), Map.of()));

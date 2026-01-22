@@ -36,6 +36,13 @@ public class User {
     @Column(name = "password_hash")
     private String passwordHash;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UserStatus status;
+
+    @Column(name = "last_login")
+    private Instant lastLogin;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -47,6 +54,9 @@ public class User {
         Instant now = Instant.now();
         if (createdAt == null) {
             createdAt = now;
+        }
+        if (status == null) {
+            status = UserStatus.active;
         }
         updatedAt = now;
     }
@@ -102,6 +112,22 @@ public class User {
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public UserStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(UserStatus status) {
+        this.status = status;
+    }
+
+    public Instant getLastLogin() {
+        return lastLogin;
+    }
+
+    public void setLastLogin(Instant lastLogin) {
+        this.lastLogin = lastLogin;
     }
 
     public Instant getCreatedAt() {

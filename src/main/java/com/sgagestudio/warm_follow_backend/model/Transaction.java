@@ -21,6 +21,9 @@ public class Transaction {
     @UuidGenerator
     private UUID id;
 
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reminder_id", nullable = false)
     private Reminder reminder;
@@ -73,6 +76,14 @@ public class Transaction {
 
     public void setReminder(Reminder reminder) {
         this.reminder = reminder;
+    }
+
+    public UUID getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(UUID workspaceId) {
+        this.workspaceId = workspaceId;
     }
 
     public User getTriggeredBy() {

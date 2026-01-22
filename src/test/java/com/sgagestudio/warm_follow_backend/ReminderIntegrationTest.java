@@ -57,7 +57,8 @@ class ReminderIntegrationTest extends AbstractIntegrationTest {
                 "Template 1",
                 "Subject",
                 "Hello {{name}}",
-                Channel.email
+                Channel.email,
+                null
         );
         String body = objectMapper.writeValueAsString(request);
         String response = mockMvc.perform(post("/templates")
@@ -78,6 +79,9 @@ class ReminderIntegrationTest extends AbstractIntegrationTest {
                 "Jones",
                 "bob@example.com",
                 "+22222222",
+                List.of("reminder"),
+                "es-ES",
+                "Europe/Madrid",
                 ConsentStatus.granted,
                 List.of("email"),
                 "web",
@@ -97,7 +101,7 @@ class ReminderIntegrationTest extends AbstractIntegrationTest {
     }
 
     private String registerAndGetAccessToken(String email) throws Exception {
-        RegisterRequest register = new RegisterRequest(email, "Owner", "StrongPass1");
+        RegisterRequest register = new RegisterRequest(email, "Owner", "Reminder Workspace", "StrongPass1");
         String registerJson = objectMapper.writeValueAsString(register);
         String response = mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

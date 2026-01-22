@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface DeliveryRepository extends JpaRepository<Delivery, UUID>, JpaSpecificationExecutor<Delivery> {
-    Optional<Delivery> findByIdAndTransaction_Reminder_OwnerUserId(UUID id, UUID ownerUserId);
+    Optional<Delivery> findByIdAndWorkspaceId(UUID id, UUID workspaceId);
 
     List<Delivery> findByTransaction_Id(UUID transactionId);
 

@@ -57,6 +57,7 @@ public class ReminderService {
     private final ContactPolicyService contactPolicyService;
     private final LegalTermsService legalTermsService;
     private final TimeService timeService;
+    private final WorkspaceContextService workspaceContextService;
 
     public ReminderService(
             ReminderRepository reminderRepository,
@@ -69,7 +70,8 @@ public class ReminderService {
             SecurityUtils securityUtils,
             ContactPolicyService contactPolicyService,
             LegalTermsService legalTermsService,
-            TimeService timeService
+            TimeService timeService,
+            WorkspaceContextService workspaceContextService
     ) {
         this.reminderRepository = reminderRepository;
         this.templateRepository = templateRepository;
@@ -82,6 +84,7 @@ public class ReminderService {
         this.contactPolicyService = contactPolicyService;
         this.legalTermsService = legalTermsService;
         this.timeService = timeService;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public PagedResponse<ReminderResponse> listReminders(
@@ -92,11 +95,11 @@ public class ReminderService {
             int limit,
             long offset
     ) {
-        UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         Pageable pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
         Specification<Reminder> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("ownerUserId"), ownerId));
+            predicates.add(cb.equal(root.get("workspaceId"), workspaceId));
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
@@ -123,26 +126,27 @@ public class ReminderService {
 
     public ReminderResponse create(ReminderCreateRequest request) {
         UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         legalTermsService.requireAccepted(ownerId);
         String idempotencyKey = RequestContextHolder.get()
                 .map(ctx -> ctx.idempotencyKey())
                 .orElse(null);
         if (StringUtils.hasText(idempotencyKey)) {
-            var existing = transactionRepository.findFirstByIdempotencyKeyAndReminder_OwnerUserId(idempotencyKey, ownerId);
+            var existing = transactionRepository.findFirstByIdempotencyKeyAndWorkspaceId(idempotencyKey, workspaceId);
             if (existing.isPresent()) {
                 return toResponse(existing.get().getReminder());
             }
         }
-        Template template = templateRepository.findByIdAndOwnerUserId(request.template_id(), ownerId)
+        Template template = templateRepository.findByIdAndWorkspaceId(request.template_id(), workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TEMPLATE_NOT_FOUND", "Template not found"));
         validateTemplateChannel(template, request.channel());
 
-        List<Customer> customers = customerRepository.findAllById(request.customer_ids());
+        List<Customer> customers = customerRepository.findByIdInAndWorkspaceId(request.customer_ids(), workspaceId);
         if (customers.size() != request.customer_ids().size()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CUSTOMERS_INVALID", "One or more customers not found");
         }
         for (Customer customer : customers) {
-            if (!customer.getOwnerUserId().equals(ownerId) || customer.isErased()) {
+            if (!workspaceId.equals(customer.getWorkspaceId()) || customer.isErased()) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "CUSTOMERS_INVALID", "Customer not owned or erased");
             }
             if (!contactPolicyService.hasConsent(customer, request.channel())) {
@@ -152,6 +156,7 @@ public class ReminderService {
 
         Reminder reminder = new Reminder();
         reminder.setOwnerUserId(ownerId);
+        reminder.setWorkspaceId(workspaceId);
         reminder.setTemplate(template);
         reminder.setChannel(request.channel());
         reminder.setFrequency(request.frequency());
@@ -174,6 +179,7 @@ public class ReminderService {
 
         Transaction transaction = new Transaction();
         transaction.setReminder(saved);
+        transaction.setWorkspaceId(workspaceId);
         User actor = userRepository.findById(ownerId).orElse(null);
         transaction.setTriggeredBy(actor);
         transaction.setStatus(TransactionStatus.queued);
@@ -182,8 +188,9 @@ public class ReminderService {
         transactionRepository.save(transaction);
 
         ReminderResponse response = toResponse(saved);
-        auditService.audit("reminder", saved.getId().toString(), "reminder.create", null, response);
+        auditService.audit(workspaceId, "reminder", saved.getId().toString(), "reminder.create", null, response);
         auditService.audit(
+                workspaceId,
                 "transaction",
                 transaction.getId().toString(),
                 "reminder.create.transaction",
@@ -205,7 +212,7 @@ public class ReminderService {
         }
         ReminderResponse before = toResponse(reminder);
         if (request.template_id() != null) {
-            Template template = templateRepository.findByIdAndOwnerUserId(request.template_id(), reminder.getOwnerUserId())
+            Template template = templateRepository.findByIdAndWorkspaceId(request.template_id(), reminder.getWorkspaceId())
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TEMPLATE_NOT_FOUND", "Template not found"));
             reminder.setTemplate(template);
         }
@@ -226,7 +233,7 @@ public class ReminderService {
         reminder.setNextRun(nextRun);
         Reminder saved = reminderRepository.save(reminder);
         ReminderResponse response = toResponse(saved);
-        auditService.audit("reminder", saved.getId().toString(), "reminder.update", before, response);
+        auditService.audit(reminder.getWorkspaceId(), "reminder", saved.getId().toString(), "reminder.update", before, response);
         return response;
     }
 
@@ -237,12 +244,13 @@ public class ReminderService {
         reminder.setNextRun(Instant.now());
         Reminder saved = reminderRepository.save(reminder);
         ReminderResponse response = toResponse(saved);
-        auditService.audit("reminder", saved.getId().toString(), "reminder.cancel", before, response);
+        auditService.audit(reminder.getWorkspaceId(), "reminder", saved.getId().toString(), "reminder.cancel", before, response);
         return response;
     }
 
     private Reminder findOwnedReminder(UUID reminderId) {
-        return reminderRepository.findByIdAndOwnerUserId(reminderId, securityUtils.requireCurrentUserId())
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        return reminderRepository.findByIdAndWorkspaceId(reminderId, workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "REMINDER_NOT_FOUND", "Reminder not found"));
     }
 

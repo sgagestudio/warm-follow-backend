@@ -26,29 +26,32 @@ public class DashboardService {
     private final ReminderRepository reminderRepository;
     private final DeliveryRepository deliveryRepository;
     private final SecurityUtils securityUtils;
+    private final WorkspaceContextService workspaceContextService;
 
     public DashboardService(
             CustomerRepository customerRepository,
             ReminderRepository reminderRepository,
             DeliveryRepository deliveryRepository,
-            SecurityUtils securityUtils
+            SecurityUtils securityUtils,
+            WorkspaceContextService workspaceContextService
     ) {
         this.customerRepository = customerRepository;
         this.reminderRepository = reminderRepository;
         this.deliveryRepository = deliveryRepository;
         this.securityUtils = securityUtils;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public DashboardStatsResponse getStats() {
-        UUID ownerId = securityUtils.requireCurrentUserId();
-        long totalCustomers = customerRepository.count(customerSpec(ownerId, null, false));
-        long consentedCustomers = customerRepository.count(customerSpec(ownerId, ConsentStatus.granted, false));
-        long activeReminders = reminderRepository.count(reminderSpec(ownerId, ReminderStatus.active));
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        long totalCustomers = customerRepository.count(customerSpec(workspaceId, null, false));
+        long consentedCustomers = customerRepository.count(customerSpec(workspaceId, ConsentStatus.granted, false));
+        long activeReminders = reminderRepository.count(reminderSpec(workspaceId, ReminderStatus.active));
 
         Instant weekAgo = Instant.now().minus(7, ChronoUnit.DAYS);
-        long sentThisWeek = deliveryRepository.count(deliverySpec(ownerId, weekAgo, List.of(DeliveryStatus.sent, DeliveryStatus.delivered)));
-        long totalDeliveries = deliveryRepository.count(deliverySpec(ownerId, null, null));
-        long delivered = deliveryRepository.count(deliverySpec(ownerId, null, List.of(DeliveryStatus.delivered)));
+        long sentThisWeek = deliveryRepository.count(deliverySpec(workspaceId, weekAgo, List.of(DeliveryStatus.sent, DeliveryStatus.delivered)));
+        long totalDeliveries = deliveryRepository.count(deliverySpec(workspaceId, null, null));
+        long delivered = deliveryRepository.count(deliverySpec(workspaceId, null, List.of(DeliveryStatus.delivered)));
         double deliveryRate = totalDeliveries == 0 ? 0.0 : (double) delivered / totalDeliveries;
 
         return new DashboardStatsResponse(
@@ -60,10 +63,10 @@ public class DashboardService {
         );
     }
 
-    private Specification<Customer> customerSpec(UUID ownerId, ConsentStatus status, boolean includeErased) {
+    private Specification<Customer> customerSpec(UUID workspaceId, ConsentStatus status, boolean includeErased) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("ownerUserId"), ownerId));
+            predicates.add(cb.equal(root.get("workspaceId"), workspaceId));
             if (!includeErased) {
                 predicates.add(cb.isFalse(root.get("erased")));
             }
@@ -74,17 +77,17 @@ public class DashboardService {
         };
     }
 
-    private Specification<Reminder> reminderSpec(UUID ownerId, ReminderStatus status) {
+    private Specification<Reminder> reminderSpec(UUID workspaceId, ReminderStatus status) {
         return (root, query, cb) -> cb.and(
-                cb.equal(root.get("ownerUserId"), ownerId),
+                cb.equal(root.get("workspaceId"), workspaceId),
                 cb.equal(root.get("status"), status)
         );
     }
 
-    private Specification<Delivery> deliverySpec(UUID ownerId, Instant from, List<DeliveryStatus> statuses) {
+    private Specification<Delivery> deliverySpec(UUID workspaceId, Instant from, List<DeliveryStatus> statuses) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("transaction").get("reminder").get("ownerUserId"), ownerId));
+            predicates.add(cb.equal(root.get("workspaceId"), workspaceId));
             if (from != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
             }

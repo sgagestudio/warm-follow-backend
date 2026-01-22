@@ -23,6 +23,9 @@ public class AuditEvent {
     @UuidGenerator
     private UUID id;
 
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actor_user_id")
     private User actorUser;
@@ -78,6 +81,14 @@ public class AuditEvent {
 
     public void setActorUser(User actorUser) {
         this.actorUser = actorUser;
+    }
+
+    public UUID getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(UUID workspaceId) {
+        this.workspaceId = workspaceId;
     }
 
     public String getEntityType() {

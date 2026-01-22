@@ -32,6 +32,8 @@ public class JwtService {
                 .claim("email", user.email())
                 .claim("provider", user.provider())
                 .claim("auth_type", user.authType())
+                .claim("workspace_id", user.workspaceId() != null ? user.workspaceId().toString() : null)
+                .claim("role", user.role())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(key, Jwts.SIG.HS256)
@@ -44,11 +46,14 @@ public class JwtService {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+        String workspaceId = claims.get("workspace_id", String.class);
         return new AuthenticatedUser(
                 java.util.UUID.fromString(claims.getSubject()),
                 claims.get("email", String.class),
                 claims.get("provider", String.class),
-                claims.get("auth_type", String.class)
+                claims.get("auth_type", String.class),
+                workspaceId != null ? java.util.UUID.fromString(workspaceId) : null,
+                claims.get("role", String.class)
         );
     }
 

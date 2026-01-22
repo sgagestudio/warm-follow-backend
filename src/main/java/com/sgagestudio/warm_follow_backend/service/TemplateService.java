@@ -1,5 +1,6 @@
 package com.sgagestudio.warm_follow_backend.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sgagestudio.warm_follow_backend.audit.AuditService;
 import com.sgagestudio.warm_follow_backend.dto.PagedResponse;
 import com.sgagestudio.warm_follow_backend.dto.TemplateCreateRequest;
@@ -34,25 +35,31 @@ public class TemplateService {
     private final ReminderRepository reminderRepository;
     private final AuditService auditService;
     private final SecurityUtils securityUtils;
+    private final WorkspaceContextService workspaceContextService;
+    private final ObjectMapper objectMapper;
 
     public TemplateService(
             TemplateRepository templateRepository,
             ReminderRepository reminderRepository,
             AuditService auditService,
-            SecurityUtils securityUtils
+            SecurityUtils securityUtils,
+            WorkspaceContextService workspaceContextService,
+            ObjectMapper objectMapper
     ) {
         this.templateRepository = templateRepository;
         this.reminderRepository = reminderRepository;
         this.auditService = auditService;
         this.securityUtils = securityUtils;
+        this.workspaceContextService = workspaceContextService;
+        this.objectMapper = objectMapper;
     }
 
     public PagedResponse<TemplateResponse> listTemplates(int limit, long offset, String search) {
-        UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         Pageable pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
         Specification<Template> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("ownerUserId"), ownerId));
+            predicates.add(cb.equal(root.get("workspaceId"), workspaceId));
             if (StringUtils.hasText(search)) {
                 String term = "%" + search.toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.like(cb.lower(root.get("name")), term));
@@ -67,14 +74,20 @@ public class TemplateService {
 
     public TemplateResponse create(TemplateCreateRequest request) {
         Template template = new Template();
-        template.setOwnerUserId(securityUtils.requireCurrentUserId());
+        UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        template.setOwnerUserId(ownerId);
+        template.setWorkspaceId(workspaceId);
         template.setName(request.name());
         template.setSubject(request.subject());
         template.setContent(request.content());
         template.setChannel(request.channel());
+        if (request.variables() != null) {
+            template.setVariables(objectMapper.valueToTree(request.variables()));
+        }
         Template saved = templateRepository.save(template);
         TemplateResponse response = toResponse(saved);
-        auditService.audit("template", saved.getId().toString(), "template.create", null, response);
+        auditService.audit(workspaceId, "template", saved.getId().toString(), "template.create", null, response);
         return response;
     }
 
@@ -101,9 +114,12 @@ public class TemplateService {
         if (request.channel() != null) {
             template.setChannel(request.channel());
         }
+        if (request.variables() != null) {
+            template.setVariables(objectMapper.valueToTree(request.variables()));
+        }
         Template saved = templateRepository.save(template);
         TemplateResponse response = toResponse(saved);
-        auditService.audit("template", saved.getId().toString(), "template.update", before, response);
+        auditService.audit(template.getWorkspaceId(), "template", saved.getId().toString(), "template.update", before, response);
         return response;
     }
 
@@ -113,23 +129,29 @@ public class TemplateService {
         }
         Template template = findOwnedTemplate(templateId);
         templateRepository.delete(template);
-        auditService.audit("template", template.getId().toString(), "template.delete", null, null);
+        auditService.audit(template.getWorkspaceId(), "template", template.getId().toString(), "template.delete", null, null);
     }
 
     public TemplatePreviewResponse preview(TemplatePreviewRequest request) {
-        String rendered = renderTemplate(request.content(), request.data());
-        return new TemplatePreviewResponse(rendered);
+        String renderedSubject = null;
+        if (request.subject() != null) {
+            renderedSubject = renderTemplate(request.subject(), request.variables());
+        }
+        String renderedContent = renderTemplate(request.content(), request.variables());
+        return new TemplatePreviewResponse(renderedSubject, renderedContent);
     }
 
     private Template findOwnedTemplate(Long templateId) {
-        return templateRepository.findByIdAndOwnerUserId(templateId, securityUtils.requireCurrentUserId())
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        return templateRepository.findByIdAndWorkspaceId(templateId, workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TEMPLATE_NOT_FOUND", "Template not found"));
     }
 
     private boolean hasActiveReminders(Long templateId) {
-        return reminderRepository.existsByTemplate_IdAndOwnerUserIdAndStatusIn(
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        return reminderRepository.existsByTemplate_IdAndWorkspaceIdAndStatusIn(
                 templateId,
-                securityUtils.requireCurrentUserId(),
+                workspaceId,
                 List.of(ReminderStatus.active, ReminderStatus.pending)
         );
     }
@@ -141,17 +163,19 @@ public class TemplateService {
                 template.getSubject(),
                 template.getContent(),
                 template.getChannel(),
+                template.getVariables(),
+                template.getVersion(),
                 template.getCreatedAt(),
                 template.getUpdatedAt()
         );
     }
 
-    private String renderTemplate(String content, Map<String, Object> data) {
-        if (data == null || data.isEmpty()) {
+    private String renderTemplate(String content, Map<String, Object> variables) {
+        if (variables == null || variables.isEmpty()) {
             return content;
         }
         String rendered = content;
-        for (Map.Entry<String, Object> entry : data.entrySet()) {
+        for (Map.Entry<String, Object> entry : variables.entrySet()) {
             String key = "{{" + entry.getKey() + "}}";
             rendered = rendered.replace(key, String.valueOf(entry.getValue()));
         }

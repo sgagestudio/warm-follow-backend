@@ -6,7 +6,7 @@ public record UserResponse(
         UUID id,
         String email,
         String name,
-        String provider,
-        String auth_type
+        String status,
+        java.time.Instant last_login
 ) {
 }

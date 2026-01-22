@@ -47,6 +47,7 @@ public class CustomerService {
     private final SecurityUtils securityUtils;
     private final LegalTermsService legalTermsService;
     private final TimeService timeService;
+    private final WorkspaceContextService workspaceContextService;
 
     public CustomerService(
             CustomerRepository customerRepository,
@@ -56,7 +57,8 @@ public class CustomerService {
             AuditService auditService,
             SecurityUtils securityUtils,
             LegalTermsService legalTermsService,
-            TimeService timeService
+            TimeService timeService,
+            WorkspaceContextService workspaceContextService
     ) {
         this.customerRepository = customerRepository;
         this.consentEventRepository = consentEventRepository;
@@ -66,6 +68,7 @@ public class CustomerService {
         this.securityUtils = securityUtils;
         this.legalTermsService = legalTermsService;
         this.timeService = timeService;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public PagedResponse<CustomerResponse> listCustomers(
@@ -76,11 +79,11 @@ public class CustomerService {
             int limit,
             long offset
     ) {
-        UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         Pageable pageable = OffsetPageRequest.of(offset, limit, Sort.by("createdAt").descending());
         Specification<Customer> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("ownerUserId"), ownerId));
+            predicates.add(cb.equal(root.get("workspaceId"), workspaceId));
             predicates.add(cb.isFalse(root.get("erased")));
             if (consentStatus != null) {
                 predicates.add(cb.equal(root.get("consentStatus"), consentStatus));
@@ -112,13 +115,18 @@ public class CustomerService {
 
     public CustomerResponse create(CustomerCreateRequest request) {
         UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         legalTermsService.requireAccepted(ownerId);
         Customer customer = new Customer();
         customer.setOwnerUserId(ownerId);
+        customer.setWorkspaceId(workspaceId);
         customer.setFirstName(request.first_name());
         customer.setLastName(request.last_name());
         customer.setEmail(request.email());
         customer.setPhone(request.phone());
+        customer.setTags(normalizeTags(request.tags()));
+        customer.setLocale(request.locale());
+        customer.setTimezone(request.timezone());
         customer.setConsentStatus(request.consent_status());
         customer.setConsentSource(request.consent_source());
         customer.setConsentProofRef(request.consent_proof_ref());
@@ -130,6 +138,7 @@ public class CustomerService {
 
         CustomerConsentEvent event = new CustomerConsentEvent();
         event.setCustomer(saved);
+        event.setWorkspaceId(workspaceId);
         event.setStatus(saved.getConsentStatus());
         event.setChannels(saved.getConsentChannels());
         event.setSource(saved.getConsentSource());
@@ -137,7 +146,7 @@ public class CustomerService {
         consentEventRepository.save(event);
 
         CustomerResponse response = toResponse(saved);
-        auditService.audit("customer", saved.getId().toString(), "customer.create", null, response);
+        auditService.audit(workspaceId, "customer", saved.getId().toString(), "customer.create", null, response);
         return response;
     }
 
@@ -161,6 +170,15 @@ public class CustomerService {
         if (request.phone() != null) {
             customer.setPhone(request.phone());
         }
+        if (request.tags() != null) {
+            customer.setTags(normalizeTags(request.tags()));
+        }
+        if (request.locale() != null) {
+            customer.setLocale(request.locale());
+        }
+        if (request.timezone() != null) {
+            customer.setTimezone(request.timezone());
+        }
         if (request.consent_status() != null) {
             customer.setConsentStatus(request.consent_status());
             if (request.consent_status() == ConsentStatus.granted) {
@@ -178,7 +196,7 @@ public class CustomerService {
         }
         Customer saved = customerRepository.save(customer);
         CustomerResponse response = toResponse(saved);
-        auditService.audit("customer", saved.getId().toString(), "customer.update", before, response);
+        auditService.audit(customer.getWorkspaceId(), "customer", saved.getId().toString(), "customer.update", before, response);
         return response;
     }
 
@@ -188,7 +206,7 @@ public class CustomerService {
         }
         Customer customer = findOwnedCustomer(customerId);
         customerRepository.delete(customer);
-        auditService.audit("customer", customer.getId().toString(), "customer.delete", null, null);
+        auditService.audit(customer.getWorkspaceId(), "customer", customer.getId().toString(), "customer.delete", null, null);
     }
 
     public CustomerResponse updateConsent(UUID customerId, ConsentUpdateRequest request) {
@@ -205,6 +223,7 @@ public class CustomerService {
 
         CustomerConsentEvent event = new CustomerConsentEvent();
         event.setCustomer(saved);
+        event.setWorkspaceId(customer.getWorkspaceId());
         event.setStatus(request.status());
         event.setChannels(saved.getConsentChannels());
         event.setSource(request.source());
@@ -212,13 +231,13 @@ public class CustomerService {
         consentEventRepository.save(event);
 
         CustomerResponse response = toResponse(saved);
-        auditService.audit("customer", saved.getId().toString(), "customer.consent_update", before, response);
+        auditService.audit(customer.getWorkspaceId(), "customer", saved.getId().toString(), "customer.consent_update", before, response);
         return response;
     }
 
     public List<ConsentEventResponse> consentHistory(UUID customerId) {
         Customer customer = findOwnedCustomer(customerId);
-        return consentEventRepository.findByCustomer_IdOrderByCreatedAtDesc(customer.getId())
+        return consentEventRepository.findByCustomer_IdAndWorkspaceIdOrderByCreatedAtDesc(customer.getId(), customer.getWorkspaceId())
                 .stream()
                 .map(event -> new ConsentEventResponse(
                         event.getId(),
@@ -237,11 +256,12 @@ public class CustomerService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "User not found"));
         GdprRequest request = new GdprRequest();
         request.setCustomer(customer);
+        request.setWorkspaceId(customer.getWorkspaceId());
         request.setRequestedBy(actor);
         request.setType(GdprRequestType.export);
         request.setStatus(GdprRequestStatus.queued);
         GdprRequest saved = gdprRequestRepository.save(request);
-        auditService.audit("gdpr_request", saved.getId().toString(), "gdpr.export", null,
+        auditService.audit(customer.getWorkspaceId(), "gdpr_request", saved.getId().toString(), "gdpr.export", null,
                 new GdprRequestResponse(saved.getId(), saved.getStatus()));
         return new GdprRequestResponse(saved.getId(), saved.getStatus());
     }
@@ -267,6 +287,7 @@ public class CustomerService {
 
         CustomerConsentEvent event = new CustomerConsentEvent();
         event.setCustomer(customer);
+        event.setWorkspaceId(customer.getWorkspaceId());
         event.setStatus(ConsentStatus.revoked);
         event.setChannels(new String[] {});
         event.setSource("gdpr");
@@ -274,20 +295,22 @@ public class CustomerService {
 
         GdprRequest request = new GdprRequest();
         request.setCustomer(customer);
+        request.setWorkspaceId(customer.getWorkspaceId());
         request.setRequestedBy(actor);
         request.setType(GdprRequestType.erase);
         request.setStatus(GdprRequestStatus.done);
         request.setCompletedAt(Instant.now());
         GdprRequest saved = gdprRequestRepository.save(request);
         CustomerResponse after = toResponse(customer);
-        auditService.audit("customer", customer.getId().toString(), "gdpr.erase", before, after);
-        auditService.audit("gdpr_request", saved.getId().toString(), "gdpr.erase.request", null,
+        auditService.audit(customer.getWorkspaceId(), "customer", customer.getId().toString(), "gdpr.erase", before, after);
+        auditService.audit(customer.getWorkspaceId(), "gdpr_request", saved.getId().toString(), "gdpr.erase.request", null,
                 new GdprRequestResponse(saved.getId(), saved.getStatus()));
         return new GdprRequestResponse(saved.getId(), saved.getStatus());
     }
 
     private Customer findOwnedCustomer(UUID customerId) {
-        return customerRepository.findByIdAndOwnerUserId(customerId, securityUtils.requireCurrentUserId())
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        return customerRepository.findByIdAndWorkspaceId(customerId, workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CUSTOMER_NOT_FOUND", "Customer not found"));
     }
 
@@ -311,6 +334,18 @@ public class CustomerService {
         return normalized.toArray(String[]::new);
     }
 
+    private String[] normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return new String[] {};
+        }
+        List<String> normalized = tags.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        return normalized.toArray(String[]::new);
+    }
+
     private CustomerResponse toResponse(Customer customer) {
         return new CustomerResponse(
                 customer.getId(),
@@ -318,11 +353,19 @@ public class CustomerService {
                 customer.getLastName(),
                 customer.getEmail(),
                 customer.getPhone(),
+                customer.getTags() == null ? List.of() : java.util.Arrays.asList(customer.getTags()),
+                customer.getLocale(),
+                customer.getTimezone(),
                 customer.getConsentStatus(),
                 customer.getConsentDate(),
                 customer.getConsentSource(),
                 customer.getConsentChannels() == null ? List.of() : java.util.Arrays.asList(customer.getConsentChannels()),
                 customer.getConsentProofRef(),
+                customer.isDoNotEmail(),
+                customer.isDoNotSms(),
+                customer.getEmailBounceReason(),
+                customer.getEmailBounceAt(),
+                customer.getEmailComplaintAt(),
                 customer.isErased(),
                 customer.getCreatedAt(),
                 customer.getUpdatedAt()

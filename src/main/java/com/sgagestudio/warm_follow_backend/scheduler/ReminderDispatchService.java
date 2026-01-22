@@ -87,7 +87,8 @@ public class ReminderDispatchService {
         );
         for (Reminder reminder : dueReminders) {
             String requestId = "scheduler-" + UUID.randomUUID();
-            RequestContextHolder.set(new RequestContext(requestId, null, "scheduler", null));
+            String workspaceId = reminder.getWorkspaceId() != null ? reminder.getWorkspaceId().toString() : null;
+            RequestContextHolder.set(new RequestContext(requestId, null, "scheduler", null, workspaceId));
             try {
                 processReminder(reminder);
             } finally {
@@ -99,6 +100,7 @@ public class ReminderDispatchService {
     private void processReminder(Reminder reminder) {
         Transaction transaction = new Transaction();
         transaction.setReminder(reminder);
+        transaction.setWorkspaceId(reminder.getWorkspaceId());
         transaction.setStatus(TransactionStatus.running);
         transaction.setRequestId(RequestContextHolder.getRequestId());
         transactionRepository.save(transaction);
@@ -108,6 +110,7 @@ public class ReminderDispatchService {
             transaction.setFinishedAt(Instant.now());
             transactionRepository.save(transaction);
             auditService.audit(
+                    reminder.getWorkspaceId(),
                     "transaction",
                     transaction.getId().toString(),
                     "scheduler.blocked_terms",
@@ -140,6 +143,7 @@ public class ReminderDispatchService {
         transaction.setFinishedAt(Instant.now());
         transactionRepository.save(transaction);
         auditService.audit(
+                reminder.getWorkspaceId(),
                 "transaction",
                 transaction.getId().toString(),
                 "scheduler.run",
@@ -152,9 +156,12 @@ public class ReminderDispatchService {
 
     private Delivery sendEmail(Reminder reminder, Transaction transaction, ReminderRecipient recipient) {
         Delivery delivery = new Delivery();
+        delivery.setWorkspaceId(reminder.getWorkspaceId());
         delivery.setTransaction(transaction);
         delivery.setCustomer(recipient.getCustomer());
+        delivery.setReminderId(reminder.getId());
         delivery.setChannel(DeliveryChannel.email);
+        delivery.setQueuedAt(Instant.now());
         if (!contactPolicyService.isContactable(recipient.getCustomer(), DeliveryChannel.email)) {
             delivery.setStatus(DeliveryStatus.failed);
             delivery.setErrorCode("RECIPIENT_OPTOUT");
@@ -166,6 +173,7 @@ public class ReminderDispatchService {
             if (!StringUtils.hasText(to)) {
                 throw new IllegalArgumentException("Missing email");
             }
+            delivery.setRecipient(to);
             String body = appendUnsubscribeLink(
                     reminder.getTemplate().getContent(),
                     recipient.getCustomer().getId(),
@@ -184,19 +192,24 @@ public class ReminderDispatchService {
             );
             delivery.setProviderMessageId(messageId);
             delivery.setStatus(DeliveryStatus.sent);
+            delivery.setSentAt(Instant.now());
         } catch (Exception ex) {
             delivery.setStatus(DeliveryStatus.failed);
             delivery.setErrorCode("SEND_FAILED");
             delivery.setErrorMessage(ex.getMessage());
+            delivery.setFailedAt(Instant.now());
         }
         return delivery;
     }
 
     private Delivery sendSms(Reminder reminder, Transaction transaction, ReminderRecipient recipient) {
         Delivery delivery = new Delivery();
+        delivery.setWorkspaceId(reminder.getWorkspaceId());
         delivery.setTransaction(transaction);
         delivery.setCustomer(recipient.getCustomer());
+        delivery.setReminderId(reminder.getId());
         delivery.setChannel(DeliveryChannel.sms);
+        delivery.setQueuedAt(Instant.now());
         if (!contactPolicyService.isContactable(recipient.getCustomer(), DeliveryChannel.sms)) {
             delivery.setStatus(DeliveryStatus.failed);
             delivery.setErrorCode("RECIPIENT_OPTOUT");
@@ -208,6 +221,7 @@ public class ReminderDispatchService {
             if (!StringUtils.hasText(to)) {
                 throw new IllegalArgumentException("Missing phone");
             }
+            delivery.setRecipient(to);
             String body = appendUnsubscribeLink(
                     reminder.getTemplate().getContent(),
                     recipient.getCustomer().getId(),
@@ -222,10 +236,12 @@ public class ReminderDispatchService {
             );
             delivery.setProviderMessageId(messageId);
             delivery.setStatus(DeliveryStatus.sent);
+            delivery.setSentAt(Instant.now());
         } catch (Exception ex) {
             delivery.setStatus(DeliveryStatus.failed);
             delivery.setErrorCode("SEND_FAILED");
             delivery.setErrorMessage(ex.getMessage());
+            delivery.setFailedAt(Instant.now());
         }
         return delivery;
     }
@@ -245,6 +261,7 @@ public class ReminderDispatchService {
             reminder.setNextRun(Instant.now());
             reminderRepository.save(reminder);
             auditService.audit(
+                    reminder.getWorkspaceId(),
                     "reminder",
                     reminder.getId().toString(),
                     "scheduler.complete",
@@ -258,6 +275,7 @@ public class ReminderDispatchService {
         reminder.setNextRun(nextRun);
         reminderRepository.save(reminder);
         auditService.audit(
+                reminder.getWorkspaceId(),
                 "reminder",
                 reminder.getId().toString(),
                 "scheduler.reschedule",

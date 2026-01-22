@@ -7,5 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface TemplateRepository extends JpaRepository<Template, Long>, JpaSpecificationExecutor<Template> {
-    Optional<Template> findByIdAndOwnerUserId(Long id, UUID ownerUserId);
+    Optional<Template> findByIdAndWorkspaceId(Long id, UUID workspaceId);
+
+    boolean existsByWorkspaceId(UUID workspaceId);
 }

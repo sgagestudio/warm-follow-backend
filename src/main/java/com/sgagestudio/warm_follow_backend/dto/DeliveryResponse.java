@@ -7,11 +7,12 @@ import java.util.UUID;
 
 public record DeliveryResponse(
         UUID id,
+        UUID reminder_id,
         UUID transaction_id,
-        UUID customer_id,
         DeliveryChannel channel,
-        DeliveryStatus status,
         String provider_message_id,
+        String to,
+        DeliveryStatus status,
         String error_code,
         String error_message,
         Instant created_at,

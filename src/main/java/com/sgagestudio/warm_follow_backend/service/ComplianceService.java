@@ -26,25 +26,28 @@ public class ComplianceService {
     private final ObjectMapper objectMapper;
     private final AuditService auditService;
     private final SecurityUtils securityUtils;
+    private final WorkspaceContextService workspaceContextService;
 
     public ComplianceService(
             AuditEventRepository auditEventRepository,
             ComplianceAssessmentRepository assessmentRepository,
             ObjectMapper objectMapper,
             AuditService auditService,
-            SecurityUtils securityUtils
+            SecurityUtils securityUtils,
+            WorkspaceContextService workspaceContextService
     ) {
         this.auditEventRepository = auditEventRepository;
         this.assessmentRepository = assessmentRepository;
         this.objectMapper = objectMapper;
         this.auditService = auditService;
         this.securityUtils = securityUtils;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public ProcessingRecordResponse processingRecord() {
-        UUID actorId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         Specification<AuditEvent> spec = (root, query, cb) -> {
-            List<Predicate> predicates = List.of(cb.equal(root.get("actorUser").get("id"), actorId));
+            List<Predicate> predicates = List.of(cb.equal(root.get("workspaceId"), workspaceId));
             return cb.and(predicates.toArray(new Predicate[0]));
         };
         List<AuditEvent> events = auditEventRepository.findAll(spec);
@@ -59,11 +62,13 @@ public class ComplianceService {
 
     public ComplianceAssessmentResponse createAssessment(ComplianceAssessmentRequest request) {
         UUID ownerId = securityUtils.requireCurrentUserId();
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
         ComplianceAssessment assessment = new ComplianceAssessment();
         assessment.setOwnerUserId(ownerId);
+        assessment.setWorkspaceId(workspaceId);
         assessment.setDetails(objectMapper.valueToTree(request.details()));
         ComplianceAssessment saved = assessmentRepository.save(assessment);
-        auditService.audit("compliance_assessment", saved.getId().toString(), "compliance.assessment.create", null, saved);
+        auditService.audit(workspaceId, "compliance_assessment", saved.getId().toString(), "compliance.assessment.create", null, saved);
         return new ComplianceAssessmentResponse(saved.getId(), saved.getCreatedAt());
     }
 }

@@ -5,8 +5,10 @@ import com.sgagestudio.warm_follow_backend.config.WebhookProperties;
 import com.sgagestudio.warm_follow_backend.dto.WebhookStatusRequest;
 import com.sgagestudio.warm_follow_backend.model.Delivery;
 import com.sgagestudio.warm_follow_backend.model.DeliveryStatus;
+import com.sgagestudio.warm_follow_backend.model.Customer;
 import com.sgagestudio.warm_follow_backend.model.Transaction;
 import com.sgagestudio.warm_follow_backend.model.TransactionStatus;
+import com.sgagestudio.warm_follow_backend.repository.CustomerRepository;
 import com.sgagestudio.warm_follow_backend.repository.DeliveryRepository;
 import com.sgagestudio.warm_follow_backend.repository.TransactionRepository;
 import com.sgagestudio.warm_follow_backend.util.ApiException;
@@ -22,17 +24,20 @@ import org.springframework.stereotype.Service;
 public class WebhookService {
     private final DeliveryRepository deliveryRepository;
     private final TransactionRepository transactionRepository;
+    private final CustomerRepository customerRepository;
     private final WebhookProperties webhookProperties;
     private final AuditService auditService;
 
     public WebhookService(
             DeliveryRepository deliveryRepository,
             TransactionRepository transactionRepository,
+            CustomerRepository customerRepository,
             WebhookProperties webhookProperties,
             AuditService auditService
     ) {
         this.deliveryRepository = deliveryRepository;
         this.transactionRepository = transactionRepository;
+        this.customerRepository = customerRepository;
         this.webhookProperties = webhookProperties;
         this.auditService = auditService;
     }
@@ -54,8 +59,23 @@ public class WebhookService {
         delivery.setStatus(request.status());
         delivery.setErrorCode(request.error_code());
         delivery.setErrorMessage(request.error_message());
+        applyStatusTimestamps(delivery, request.status());
         deliveryRepository.save(delivery);
-        auditService.audit("delivery", delivery.getId().toString(), "webhook.update", beforeStatus, request.status());
+        auditService.audit(delivery.getWorkspaceId(), "delivery", delivery.getId().toString(), "webhook.update", beforeStatus, request.status());
+
+        if (request.status() == DeliveryStatus.bounced || request.status() == DeliveryStatus.complained) {
+            Customer customer = delivery.getCustomer();
+            if (customer != null) {
+                customer.setDoNotEmail(true);
+                if (request.status() == DeliveryStatus.bounced) {
+                    customer.setEmailBounceReason(request.error_message());
+                    customer.setEmailBounceAt(Instant.now());
+                } else {
+                    customer.setEmailComplaintAt(Instant.now());
+                }
+                customerRepository.save(customer);
+            }
+        }
 
         Transaction transaction = delivery.getTransaction();
         updateTransactionStatus(transaction);
@@ -69,7 +89,7 @@ public class WebhookService {
         transaction.setStatus(newStatus);
         transaction.setFinishedAt(Instant.now());
         transactionRepository.save(transaction);
-        auditService.audit("transaction", transaction.getId().toString(), "transaction.webhook_update", null, newStatus);
+        auditService.audit(transaction.getWorkspaceId(), "transaction", transaction.getId().toString(), "transaction.webhook_update", null, newStatus);
     }
 
     private void verifySignature(String signature, String secret, WebhookStatusRequest request) {
@@ -84,6 +104,21 @@ public class WebhookService {
         String expected = hmacSha256(secret, payload);
         if (!expected.equals(signature)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature");
+        }
+    }
+
+    private void applyStatusTimestamps(Delivery delivery, DeliveryStatus status) {
+        Instant now = Instant.now();
+        switch (status) {
+            case queued -> delivery.setQueuedAt(now);
+            case sent -> delivery.setSentAt(now);
+            case delivered -> delivery.setDeliveredAt(now);
+            case bounced -> delivery.setBouncedAt(now);
+            case complained -> delivery.setComplainedAt(now);
+            case failed -> delivery.setFailedAt(now);
+            case canceled -> delivery.setCanceledAt(now);
+            default -> {
+            }
         }
     }
 

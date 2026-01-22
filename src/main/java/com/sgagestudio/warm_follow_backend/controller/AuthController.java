@@ -4,6 +4,7 @@ import com.sgagestudio.warm_follow_backend.config.AuthProperties;
 import com.sgagestudio.warm_follow_backend.dto.AuthResponse;
 import com.sgagestudio.warm_follow_backend.dto.LoginRequest;
 import com.sgagestudio.warm_follow_backend.dto.LogoutRequest;
+import com.sgagestudio.warm_follow_backend.dto.MeResponse;
 import com.sgagestudio.warm_follow_backend.dto.OauthAuthorizeResponse;
 import com.sgagestudio.warm_follow_backend.dto.OauthExchangeRequest;
 import com.sgagestudio.warm_follow_backend.dto.PasswordForgotRequest;
@@ -11,7 +12,6 @@ import com.sgagestudio.warm_follow_backend.dto.PasswordResetRequest;
 import com.sgagestudio.warm_follow_backend.dto.RefreshRequest;
 import com.sgagestudio.warm_follow_backend.dto.RegisterRequest;
 import com.sgagestudio.warm_follow_backend.dto.StatusResponse;
-import com.sgagestudio.warm_follow_backend.dto.UserResponse;
 import com.sgagestudio.warm_follow_backend.service.AuthService;
 import com.sgagestudio.warm_follow_backend.service.GoogleOAuthService;
 import com.sgagestudio.warm_follow_backend.service.PasswordResetService;
@@ -66,7 +66,7 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public UserResponse me() {
+    public MeResponse me() {
         return authService.me();
     }
 

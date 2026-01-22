@@ -4,6 +4,7 @@ public record RequestContext(
         String requestId,
         String ip,
         String userAgent,
-        String idempotencyKey
+        String idempotencyKey,
+        String workspaceId
 ) {
 }

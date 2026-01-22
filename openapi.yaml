@@ -1,0 +1,3085 @@
+openapi: 3.0.3
+info:
+  title: Warm Follow SaaS API
+  version: 1.0.1
+  description: |
+    Single source of truth for frontend integration.
+    All responses use snake_case. Auth uses JWT bearer tokens.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: Auth
+  - name: Onboarding
+  - name: Workspaces
+  - name: Members
+  - name: SendingDomains
+  - name: Clients
+  - name: Templates
+  - name: Reminders
+  - name: Transactions
+  - name: Deliveries
+  - name: Usage
+  - name: Billing
+  - name: Settings
+  - name: Compliance
+  - name: GDPR
+  - name: Webhooks
+  - name: Unsubscribe
+  - name: Health
+  - name: Audit
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    WorkspaceId:
+      name: X-Workspace-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Override current workspace context.
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Idempotency key for create operations.
+    WebhookSignature:
+      name: X-Signature
+      in: header
+      required: false
+      schema:
+        type: string
+      description: HMAC signature for internal webhooks.
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: LIMIT_CLIENTS_REACHED
+            message: Client limit reached for current plan.
+            details:
+              limit: 200
+              current: 200
+            traceId: b3f1c2a8
+    BadRequestResponse:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnauthorizedResponse:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ForbiddenResponse:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ConflictResponse:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        traceId:
+          type: string
+      example:
+        code: LIMIT_CLIENTS_REACHED
+        message: Client limit reached for current plan.
+        details:
+          limit: 200
+          current: 200
+        traceId: b3f1c2a8
+    StatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+      example:
+        status: ok
+    AuthResponse:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in, user, workspace, role]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+        user:
+          $ref: "#/components/schemas/UserResponse"
+        workspace:
+          $ref: "#/components/schemas/WorkspaceResponse"
+        role:
+          type: string
+          enum: [owner, admin, member]
+      example:
+        access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+        refresh_token: 6f7c0b40-1f32-4f1b-8ab1-89b1b7cc0b91
+        token_type: Bearer
+        expires_in: 900
+        user:
+          id: 2b7c1dd6-8b8d-4b77-b2cb-9b0b3b97e7a0
+          email: owner@example.com
+          name: Owner User
+          status: active
+          last_login: "2026-01-20T10:20:00Z"
+        workspace:
+          id: 6d5c2e8a-4b0b-4da3-9a9f-3f8dd6d93e2a
+          name: Acme Workspace
+          plan: starter
+          status: active
+          billing_status: active
+          created_at: "2026-01-20T10:10:00Z"
+        role: owner
+    UserResponse:
+      type: object
+      required: [id, email, name, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, invited, disabled]
+        last_login:
+          type: string
+          format: date-time
+    WorkspaceResponse:
+      type: object
+      required: [id, name, plan, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [starter, pro, business]
+        status:
+          type: string
+          enum: [trialing, active, past_due, suspended, canceled]
+        billing_status:
+          type: string
+          enum: [trialing, active, past_due, canceled, unpaid, incomplete]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WorkspaceListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceResponse"
+    WorkspaceMemberResponse:
+      type: object
+      required: [user, role, status]
+      properties:
+        user:
+          $ref: "#/components/schemas/UserResponse"
+        role:
+          type: string
+          enum: [owner, admin, member]
+        status:
+          type: string
+          enum: [active, invited, suspended]
+    WorkspaceInviteResponse:
+      type: object
+      required: [id, email, role, status, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, admin, member]
+        status:
+          type: string
+          enum: [pending, accepted, revoked, expired]
+        expires_at:
+          type: string
+          format: date-time
+    WorkspaceInviteListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceInviteResponse"
+    WorkspaceContextResponse:
+      type: object
+      required: [workspace, role]
+      properties:
+        workspace:
+          $ref: "#/components/schemas/WorkspaceResponse"
+        role:
+          type: string
+          enum: [owner, admin, member]
+    MeResponse:
+      type: object
+      required: [user, workspace, role, limits, usage, counts]
+      properties:
+        user:
+          $ref: "#/components/schemas/UserResponse"
+        workspace:
+          $ref: "#/components/schemas/WorkspaceResponse"
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceContextResponse"
+        role:
+          type: string
+          enum: [owner, admin, member]
+        limits:
+          $ref: "#/components/schemas/LimitsResponse"
+        usage:
+          $ref: "#/components/schemas/UsageResponse"
+        counts:
+          $ref: "#/components/schemas/CountsResponse"
+      example:
+        user:
+          id: 2b7c1dd6-8b8d-4b77-b2cb-9b0b3b97e7a0
+          email: owner@example.com
+          name: Owner User
+          status: active
+          last_login: "2026-01-20T10:20:00Z"
+        workspace:
+          id: 6d5c2e8a-4b0b-4da3-9a9f-3f8dd6d93e2a
+          name: Acme Workspace
+          plan: starter
+          status: active
+          billing_status: active
+          created_at: "2026-01-20T10:10:00Z"
+        role: owner
+        limits:
+          plan: starter
+          max_users: 3
+          max_clients: 200
+          retention_days: 365
+        usage:
+          period: "2026-01"
+          emails_sent: 120
+          sms_sent: 45
+          sms_credits_balance: 10
+          overage_cost_cents: 0
+        counts:
+          clients: 152
+          users: 2
+    CountsResponse:
+      type: object
+      required: [clients, users]
+      properties:
+        clients:
+          type: integer
+          format: int64
+        users:
+          type: integer
+          format: int64
+    OnboardingStepsResponse:
+      type: object
+      required: [workspace_created, domain_configured, template_created, first_reminder_scheduled]
+      properties:
+        workspace_created:
+          type: boolean
+        domain_configured:
+          type: boolean
+        template_created:
+          type: boolean
+        first_reminder_scheduled:
+          type: boolean
+    OnboardingStateResponse:
+      type: object
+      required: [steps]
+      properties:
+        steps:
+          $ref: "#/components/schemas/OnboardingStepsResponse"
+        current_step:
+          type: string
+          enum: [workspace_created, domain_configured, template_created, first_reminder_scheduled]
+          nullable: true
+      example:
+        steps:
+          workspace_created: true
+          domain_configured: false
+          template_created: false
+          first_reminder_scheduled: false
+        current_step: domain_configured
+    OnboardingUpdateRequest:
+      type: object
+      required: [step, completed]
+      properties:
+        step:
+          type: string
+          enum: [workspace_created, domain_configured, template_created, first_reminder_scheduled]
+        completed:
+          type: boolean
+    ClientResponse:
+      type: object
+      required: [id, first_name, last_name, consent_status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        locale:
+          type: string
+        timezone:
+          type: string
+        consent_status:
+          type: string
+          enum: [granted, pending, revoked]
+        consent_date:
+          type: string
+          format: date
+        consent_source:
+          type: string
+        consent_channels:
+          type: array
+          items:
+            type: string
+        consent_proof_ref:
+          type: string
+        do_not_email:
+          type: boolean
+        do_not_sms:
+          type: boolean
+        email_bounce_reason:
+          type: string
+        email_bounce_at:
+          type: string
+          format: date-time
+        email_complaint_at:
+          type: string
+          format: date-time
+        is_erased:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PagedClientsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientResponse"
+        next_cursor:
+          type: string
+    ConsentEventResponse:
+      type: object
+      required: [id, status, channels, source, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [granted, pending, revoked]
+        channels:
+          type: array
+          items:
+            type: string
+        proof_ref:
+          type: string
+        source:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    TemplateResponse:
+      type: object
+      required: [id, name, content, channel, version, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        subject:
+          type: string
+        content:
+          type: string
+        channel:
+          type: string
+          enum: [email, sms, both]
+        variables:
+          type: object
+          additionalProperties: true
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PagedTemplatesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateResponse"
+        next_cursor:
+          type: string
+    TemplatePreviewResponse:
+      type: object
+      required: [subject, content]
+      properties:
+        subject:
+          type: string
+        content:
+          type: string
+    ReminderResponse:
+      type: object
+      required: [id, template_id, channel, schedule_type, status, next_run, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_id:
+          type: integer
+          format: int64
+        channel:
+          type: string
+          enum: [email, sms, both]
+        schedule_type:
+          type: string
+          enum: [legacy, once, interval, cron]
+        schedule_expression:
+          type: string
+        schedule_payload:
+          type: object
+          additionalProperties: true
+          example:
+            cron: "0 9 * * *"
+        schedule_interval_minutes:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+        scheduled_date:
+          type: string
+          format: date
+        scheduled_time:
+          type: string
+        timezone:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, completed, failed, canceled]
+        next_run:
+          type: string
+          format: date-time
+        recipients_count:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PagedRemindersResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReminderResponse"
+        next_cursor:
+          type: string
+    TransactionResponse:
+      type: object
+      required: [id, reminder_id, status, started_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reminder_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, done, failed]
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    PagedTransactionsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionResponse"
+        next_cursor:
+          type: string
+    DeliveryResponse:
+      type: object
+      required: [id, channel, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reminder_id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [email, sms]
+        provider_message_id:
+          type: string
+        to:
+          type: string
+        status:
+          type: string
+          enum: [queued, sent, delivered, bounced, complained, failed, canceled]
+        error_code:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PagedDeliveriesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryResponse"
+        next_cursor:
+          type: string
+    DnsRecord:
+      type: object
+      required: [type, name, value]
+      properties:
+        type:
+          type: string
+          enum: [TXT, CNAME, MX]
+        name:
+          type: string
+        value:
+          type: string
+        ttl:
+          type: integer
+        priority:
+          type: integer
+        purpose:
+          type: string
+          enum: [spf, dkim, dmarc]
+    SendingDomainResponse:
+      type: object
+      required: [id, domain, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [pending, verified, failed]
+        verification_records:
+          type: array
+          items:
+            $ref: "#/components/schemas/DnsRecord"
+          example:
+            - type: TXT
+              name: "@"
+              value: "v=spf1 include:amazonses.com ~all"
+              purpose: spf
+            - type: CNAME
+              name: "dkim._domainkey"
+              value: "dkim.amazonses.com"
+              purpose: dkim
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UsageResponse:
+      type: object
+      required: [period, emails_sent, sms_sent, sms_credits_balance]
+      properties:
+        period:
+          type: string
+        emails_sent:
+          type: integer
+        sms_sent:
+          type: integer
+        sms_credits_balance:
+          type: integer
+        overage_cost_cents:
+          type: integer
+    LimitsResponse:
+      type: object
+      required: [plan, max_users, max_clients, retention_days]
+      properties:
+        plan:
+          type: string
+          enum: [starter, pro, business]
+        max_users:
+          type: integer
+        max_clients:
+          type: integer
+        retention_days:
+          type: integer
+        sms_included:
+          type: integer
+        sms_addon_enabled:
+          type: boolean
+        sms_price_cents:
+          type: integer
+    BillingStatusResponse:
+      type: object
+      required: [plan, status]
+      properties:
+        plan:
+          type: string
+          enum: [starter, pro, business]
+        status:
+          type: string
+          enum: [trialing, active, past_due, canceled, unpaid, incomplete]
+        current_period_end:
+          type: string
+          format: date-time
+        payment_failed:
+          type: boolean
+    CheckoutSessionResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+    DashboardStatsResponse:
+      type: object
+      required: [total_customers, active_reminders, sent_this_week, delivery_rate, consented_customers]
+      properties:
+        total_customers:
+          type: integer
+        active_reminders:
+          type: integer
+        sent_this_week:
+          type: integer
+        delivery_rate:
+          type: number
+          format: double
+        consented_customers:
+          type: integer
+    SettingsResponse:
+      type: object
+      required: [user_id, settings, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        settings:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    PrivacySettingsResponse:
+      type: object
+      required: [user_id, data_retention_enabled, anonymization_enabled, audit_logs_enabled, encryption_enabled, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        data_retention_enabled:
+          type: boolean
+        anonymization_enabled:
+          type: boolean
+        audit_logs_enabled:
+          type: boolean
+        encryption_enabled:
+          type: boolean
+        retention_days:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+    ComplianceAssessmentResponse:
+      type: object
+      required: [id, details, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        details:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    GdprRequestResponse:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing, done, failed]
+        download_url:
+          type: string
+    AuditEventResponse:
+      type: object
+      required: [id, action, entity_type, entity_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    UnsubscribeStatusResponse:
+      type: object
+      required: [status, channel]
+      properties:
+        status:
+          type: string
+        channel:
+          type: string
+          enum: [email, sms]
+    OauthAuthorizeResponse:
+      type: object
+      required: [auth_url]
+      properties:
+        auth_url:
+          type: string
+    RegisterRequest:
+      type: object
+      required: [email, password, name, workspace_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        name:
+          type: string
+        workspace_name:
+          type: string
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+    LogoutRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+    OauthExchangeRequest:
+      type: object
+      required: [code, state]
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+    PasswordForgotRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    PasswordResetRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+        new_password:
+          type: string
+          format: password
+    WorkspaceCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    WorkspaceUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        timezone:
+          type: string
+        locale:
+          type: string
+    WorkspaceInviteRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, admin, member]
+    InviteAcceptRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    MemberUpdateRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [owner, admin, member]
+        status:
+          type: string
+          enum: [active, invited, suspended]
+    SendingDomainCreateRequest:
+      type: object
+      required: [domain]
+      properties:
+        domain:
+          type: string
+    ClientCreateRequest:
+      type: object
+      required: [first_name, last_name, consent_status]
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        locale:
+          type: string
+        timezone:
+          type: string
+        consent_status:
+          type: string
+          enum: [granted, pending, revoked]
+        consent_date:
+          type: string
+          format: date
+        consent_source:
+          type: string
+        consent_channels:
+          type: array
+          items:
+            type: string
+        consent_proof_ref:
+          type: string
+    ClientUpdateRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        locale:
+          type: string
+        timezone:
+          type: string
+    ConsentUpdateRequest:
+      type: object
+      required: [status, channels, source]
+      properties:
+        status:
+          type: string
+          enum: [granted, pending, revoked]
+        channels:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+        proof_ref:
+          type: string
+        consent_date:
+          type: string
+          format: date
+    TemplateCreateRequest:
+      type: object
+      required: [name, content, channel]
+      properties:
+        name:
+          type: string
+        subject:
+          type: string
+        content:
+          type: string
+        channel:
+          type: string
+          enum: [email, sms, both]
+        variables:
+          type: object
+          additionalProperties: true
+    TemplateUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        subject:
+          type: string
+        content:
+          type: string
+        channel:
+          type: string
+          enum: [email, sms, both]
+        variables:
+          type: object
+          additionalProperties: true
+    TemplatePreviewRequest:
+      type: object
+      required: [content]
+      properties:
+        subject:
+          type: string
+        content:
+          type: string
+        variables:
+          type: object
+          additionalProperties: true
+    ReminderCreateRequest:
+      type: object
+      required: [template_id, channel, schedule_type, recipient_ids]
+      properties:
+        template_id:
+          type: integer
+          format: int64
+        channel:
+          type: string
+          enum: [email, sms, both]
+        schedule_type:
+          type: string
+          enum: [once, interval, cron, legacy]
+        schedule_expression:
+          type: string
+        schedule_payload:
+          type: object
+          additionalProperties: true
+          example:
+            every_minutes: 60
+        schedule_interval_minutes:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+        scheduled_date:
+          type: string
+          format: date
+        scheduled_time:
+          type: string
+        timezone:
+          type: string
+        recipient_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    ReminderUpdateRequest:
+      type: object
+      properties:
+        template_id:
+          type: integer
+          format: int64
+        channel:
+          type: string
+          enum: [email, sms, both]
+        schedule_type:
+          type: string
+          enum: [once, interval, cron, legacy]
+        schedule_expression:
+          type: string
+        schedule_payload:
+          type: object
+          additionalProperties: true
+          example:
+            cron: "0 9 * * *"
+        schedule_interval_minutes:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+        scheduled_date:
+          type: string
+          format: date
+        scheduled_time:
+          type: string
+        timezone:
+          type: string
+    SnsEnvelope:
+      type: object
+      required:
+        - Type
+        - Message
+        - Signature
+        - SigningCertURL
+        - SignatureVersion
+        - Timestamp
+        - MessageId
+        - TopicArn
+      properties:
+        Type:
+          type: string
+          enum: [Notification, SubscriptionConfirmation, UnsubscribeConfirmation]
+        MessageId:
+          type: string
+        TopicArn:
+          type: string
+        Subject:
+          type: string
+        Message:
+          type: string
+          description: JSON string for SES event payload.
+        Timestamp:
+          type: string
+          format: date-time
+        SignatureVersion:
+          type: string
+        Signature:
+          type: string
+        SigningCertURL:
+          type: string
+        SubscribeURL:
+          type: string
+        Token:
+          type: string
+        UnsubscribeURL:
+          type: string
+    WebhookStatusRequest:
+      type: object
+      required: [provider_message_id, status]
+      properties:
+        provider_message_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, sent, delivered, bounced, complained, failed, canceled]
+        error_code:
+          type: string
+        error_message:
+          type: string
+    StripeWebhookRequest:
+      type: object
+      additionalProperties: true
+    SubscriptionCheckoutRequest:
+      type: object
+      required: [plan]
+      properties:
+        plan:
+          type: string
+          enum: [starter, pro, business]
+        return_url:
+          type: string
+    SmsPackCheckoutRequest:
+      type: object
+      required: [credits]
+      properties:
+        credits:
+          type: integer
+          enum: [100, 500, 1000]
+        return_url:
+          type: string
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user and workspace
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            example:
+              email: owner@example.com
+              password: StrongPass123
+              name: Owner User
+              workspace_name: Acme Workspace
+      responses:
+        "200":
+          description: Auth response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              email: owner@example.com
+              password: StrongPass123
+      responses:
+        "200":
+          description: Auth response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+            example:
+              refresh_token: 6f7c0b40-1f32-4f1b-8ab1-89b1b7cc0b91
+      responses:
+        "200":
+          description: Auth response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (revoke refresh token)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+            example:
+              refresh_token: 6f7c0b40-1f32-4f1b-8ab1-89b1b7cc0b91
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user and workspace context
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Me response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /onboarding:
+    get:
+      tags: [Onboarding]
+      summary: Get onboarding state
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Onboarding state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStateResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Onboarding]
+      summary: Update onboarding step state
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingUpdateRequest"
+            example:
+              step: domain_configured
+              completed: true
+      responses:
+        "200":
+          description: Onboarding state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStateResponse"
+              example:
+                steps:
+                  workspace_created: true
+                  domain_configured: true
+                  template_created: false
+                  first_reminder_scheduled: false
+                current_step: template_created
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /auth/oauth/google/authorize:
+    get:
+      tags: [Auth]
+      summary: Google OAuth authorize URL
+      security: []
+      responses:
+        "200":
+          description: OAuth authorize response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OauthAuthorizeResponse"
+  /auth/oauth/google/exchange:
+    post:
+      tags: [Auth]
+      summary: Exchange OAuth code
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OauthExchangeRequest"
+      responses:
+        "200":
+          description: Auth response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+  /auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Request password reset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordForgotRequest"
+            example:
+              email: owner@example.com
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Reset password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+            example:
+              token: reset-token
+              new_password: NewStrongPass123
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      summary: List workspaces for current user
+      responses:
+        "200":
+          description: Workspace list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    post:
+      tags: [Workspaces]
+      summary: Create workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceCreateRequest"
+            example:
+              name: New Workspace
+      responses:
+        "200":
+          description: Workspace response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /workspaces/current:
+    get:
+      tags: [Workspaces]
+      summary: Get current workspace
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Workspace response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Workspaces]
+      summary: Update current workspace
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceUpdateRequest"
+            example:
+              name: Updated Workspace
+              timezone: Europe/Madrid
+      responses:
+        "200":
+          description: Workspace response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /workspaces/{workspaceId}/members:
+    get:
+      tags: [Members]
+      summary: List workspace members (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Members list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkspaceMemberResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /workspaces/{workspaceId}/members/invite:
+    post:
+      tags: [Members]
+      summary: Invite member (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceInviteRequest"
+            example:
+              email: member@example.com
+              role: member
+      responses:
+        "200":
+          description: Invite response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInviteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /workspaces/{workspaceId}/invites:
+    get:
+      tags: [Members]
+      summary: List workspace invites (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invites list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInviteListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /workspaces/{workspaceId}/invites/{inviteId}/revoke:
+    post:
+      tags: [Members]
+      summary: Revoke invite (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invite response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInviteResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /workspaces/{workspaceId}/invites/{inviteId}/expire:
+    post:
+      tags: [Members]
+      summary: Expire invite (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invite response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInviteResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /invites/{inviteId}/accept:
+    post:
+      tags: [Members]
+      summary: Accept invite (requires matching user)
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteAcceptRequest"
+            example:
+              token: invite-token
+      responses:
+        "200":
+          description: Member response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMemberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /workspaces/{workspaceId}/members/{memberId}:
+    patch:
+      tags: [Members]
+      summary: Update member (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdateRequest"
+            example:
+              role: admin
+      responses:
+        "200":
+          description: Member response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMemberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+    delete:
+      tags: [Members]
+      summary: Remove member (owner/admin)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /sending-domains:
+    get:
+      tags: [SendingDomains]
+      summary: List sending domains
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Domain list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SendingDomainResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+    post:
+      tags: [SendingDomains]
+      summary: Add sending domain
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendingDomainCreateRequest"
+            example:
+              domain: example.com
+      responses:
+        "200":
+          description: Domain response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendingDomainResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /sending-domains/{domainId}:
+    get:
+      tags: [SendingDomains]
+      summary: Get sending domain
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: domainId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Domain response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendingDomainResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /sending-domains/{domainId}/verify:
+    post:
+      tags: [SendingDomains]
+      summary: Check domain verification
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: domainId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Domain response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendingDomainResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /customers:
+    get:
+      tags: [Clients]
+      summary: List clients
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: consent_status
+          in: query
+          schema:
+            type: string
+            enum: [granted, pending, revoked]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Clients list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedClientsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    post:
+      tags: [Clients]
+      summary: Create client
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCreateRequest"
+            example:
+              first_name: Ana
+              last_name: Perez
+              email: ana@example.com
+              phone: "+34600000000"
+              consent_status: granted
+              consent_channels: [email]
+              consent_source: web
+      responses:
+        "200":
+          description: Client response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /customers/{customerId}:
+    get:
+      tags: [Clients]
+      summary: Get client
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Client response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Clients]
+      summary: Update client
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdateRequest"
+      responses:
+        "200":
+          description: Client response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+    delete:
+      tags: [Clients]
+      summary: Delete client
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /customers/{customerId}/consent:
+    post:
+      tags: [Clients]
+      summary: Update consent
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentUpdateRequest"
+      responses:
+        "200":
+          description: Client response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /customers/{customerId}/consent-history:
+    get:
+      tags: [Clients]
+      summary: Consent history
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Consent events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConsentEventResponse"
+  /customers/{customerId}/export:
+    post:
+      tags: [Clients]
+      summary: GDPR export for a client
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: GDPR request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdprRequestResponse"
+  /customers/{customerId}/erase:
+    post:
+      tags: [Clients]
+      summary: GDPR erase for a client
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: GDPR request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdprRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List templates
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [email, sms, both]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Templates list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedTemplatesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    post:
+      tags: [Templates]
+      summary: Create template
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateCreateRequest"
+            example:
+              name: First Reminder
+              subject: Hello
+              content: Hello {{name}}, this is a reminder.
+              channel: email
+      responses:
+        "200":
+          description: Template response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /templates/{templateId}:
+    get:
+      tags: [Templates]
+      summary: Get template
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Template response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Templates]
+      summary: Update template
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateUpdateRequest"
+      responses:
+        "200":
+          description: Template response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+    delete:
+      tags: [Templates]
+      summary: Delete template
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /templates/preview:
+    post:
+      tags: [Templates]
+      summary: Preview template
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplatePreviewRequest"
+            example:
+              subject: Hello {{name}}
+              content: Hello {{name}}, this is a reminder.
+              variables:
+                name: Ana
+      responses:
+        "200":
+          description: Preview response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplatePreviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /reminders:
+    get:
+      tags: [Reminders]
+      summary: List reminders
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, active, completed, failed, canceled]
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [email, sms, both]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reminders list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedRemindersResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    post:
+      tags: [Reminders]
+      summary: Create reminder
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderCreateRequest"
+            example:
+              template_id: 10
+              channel: email
+              schedule_type: once
+              schedule_payload:
+                scheduled_at: "2026-01-22T10:00:00Z"
+              scheduled_at: "2026-01-22T10:00:00Z"
+              recipient_ids:
+                - 8b8e3bb1-6171-4a6a-9d31-1c0f8d4d8a2f
+      responses:
+        "200":
+          description: Reminder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /reminders/{reminderId}:
+    get:
+      tags: [Reminders]
+      summary: Get reminder
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: reminderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Reminders]
+      summary: Update reminder
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: reminderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderUpdateRequest"
+      responses:
+        "200":
+          description: Reminder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /reminders/{reminderId}/cancel:
+    post:
+      tags: [Reminders]
+      summary: Cancel reminder
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: reminderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /reminders/{reminderId}/pause:
+    post:
+      tags: [Reminders]
+      summary: Pause reminder
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: reminderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /reminders/{reminderId}/resume:
+    post:
+      tags: [Reminders]
+      summary: Resume reminder
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: reminderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List transactions
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: reminder_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, running, done, failed]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transactions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedTransactionsResponse"
+  /transactions/{transactionId}:
+    get:
+      tags: [Transactions]
+      summary: Get transaction
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Transaction response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+  /transactions/{transactionId}/deliveries:
+    get:
+      tags: [Transactions]
+      summary: List deliveries for transaction
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deliveries list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DeliveryResponse"
+  /deliveries:
+    get:
+      tags: [Deliveries]
+      summary: List deliveries
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, sent, delivered, bounced, complained, failed, canceled]
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [email, sms]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deliveries list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedDeliveriesResponse"
+  /deliveries/{deliveryId}:
+    get:
+      tags: [Deliveries]
+      summary: Get delivery
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Delivery response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryResponse"
+  /usage/current:
+    get:
+      tags: [Usage]
+      summary: Current period usage
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Usage response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+  /limits:
+    get:
+      tags: [Usage]
+      summary: Current plan limits
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Limits response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LimitsResponse"
+  /billing/status:
+    get:
+      tags: [Billing]
+      summary: Billing status for current workspace (owner)
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Billing status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingStatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /billing/portal:
+    post:
+      tags: [Billing]
+      summary: Create customer portal session (owner)
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Portal URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /billing/checkout/subscription:
+    post:
+      tags: [Billing]
+      summary: Create subscription checkout session (owner)
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionCheckoutRequest"
+            example:
+              plan: pro
+              return_url: https://app.example.com/billing/return
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /billing/checkout/sms-pack:
+    post:
+      tags: [Billing]
+      summary: Create SMS pack checkout session (owner)
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmsPackCheckoutRequest"
+            example:
+              credits: 500
+              return_url: https://app.example.com/billing/return
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+        "409":
+          $ref: "#/components/responses/ConflictResponse"
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Get user settings
+      responses:
+        "200":
+          description: Settings response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Settings]
+      summary: Update user settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                settings:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Settings response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /privacy/settings:
+    get:
+      tags: [Settings]
+      summary: Get privacy settings
+      responses:
+        "200":
+          description: Privacy settings response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacySettingsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+    patch:
+      tags: [Settings]
+      summary: Update privacy settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data_retention_enabled:
+                  type: boolean
+                anonymization_enabled:
+                  type: boolean
+                audit_logs_enabled:
+                  type: boolean
+                encryption_enabled:
+                  type: boolean
+                retention_days:
+                  type: integer
+      responses:
+        "200":
+          description: Privacy settings response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacySettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+  /compliance/processing-record:
+    get:
+      tags: [Compliance]
+      summary: Get processing record
+      responses:
+        "200":
+          description: Processing record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  record:
+                    type: object
+                    additionalProperties: true
+  /compliance/data-transfer-assessment:
+    post:
+      tags: [Compliance]
+      summary: Create data transfer assessment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                details:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Assessment response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceAssessmentResponse"
+  /gdpr/export:
+    post:
+      tags: [GDPR]
+      summary: Export tenant data
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: GDPR request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdprRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /gdpr/erase:
+    post:
+      tags: [GDPR]
+      summary: Erase/anonymize tenant data
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: GDPR request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdprRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /gdpr/requests/{requestId}:
+    get:
+      tags: [GDPR]
+      summary: Get GDPR request status
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: GDPR request status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdprRequestResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedResponse"
+        "403":
+          $ref: "#/components/responses/ForbiddenResponse"
+  /stats/dashboard:
+    get:
+      tags: [Usage]
+      summary: Dashboard stats
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStatsResponse"
+  /audit/events:
+    get:
+      tags: [Audit]
+      summary: Audit events
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEventResponse"
+                  next_cursor:
+                    type: string
+  /webhooks/email/status:
+    post:
+      tags: [Webhooks]
+      summary: Email delivery status (SES -> SNS)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnsEnvelope"
+            examples:
+              notification:
+                summary: SNS Notification with SES event payload
+                value:
+                  Type: Notification
+                  MessageId: 11111111-2222-3333-4444-555555555555
+                  TopicArn: arn:aws:sns:eu-west-1:123456789012:ses-events
+                  Subject: Amazon SES Email Event Notification
+                  Message: "{\"eventType\":\"Delivery\",\"mail\":{\"messageId\":\"0101018c07b0d68c-1\"}}"
+                  Timestamp: "2026-01-22T10:00:00Z"
+                  SignatureVersion: "1"
+                  Signature: "base64signature"
+                  SigningCertURL: "https://sns.eu-west-1.amazonaws.com/SimpleNotificationService.pem"
+              subscription_confirmation:
+                summary: SNS SubscriptionConfirmation
+                value:
+                  Type: SubscriptionConfirmation
+                  MessageId: 66666666-7777-8888-9999-000000000000
+                  TopicArn: arn:aws:sns:eu-west-1:123456789012:ses-events
+                  Message: "You have chosen to subscribe to the topic."
+                  Timestamp: "2026-01-22T10:00:00Z"
+                  SignatureVersion: "1"
+                  Signature: "base64signature"
+                  SigningCertURL: "https://sns.eu-west-1.amazonaws.com/SimpleNotificationService.pem"
+                  SubscribeURL: "https://sns.eu-west-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=..."
+                  Token: "token"
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+  /webhooks/sms/status:
+    post:
+      tags: [Webhooks]
+      summary: SMS delivery status (Twilio)
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookStatusRequest"
+            example:
+              provider_message_id: SM123
+              status: delivered
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      summary: Stripe webhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StripeWebhookRequest"
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+  /u/{token}:
+    get:
+      tags: [Unsubscribe]
+      summary: Unsubscribe landing page
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Landing page (HTML or JSON)
+          content:
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsubscribeStatusResponse"
+    post:
+      tags: [Unsubscribe]
+      summary: Confirm unsubscribe
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsubscribeStatusResponse"
+  /unsubscribe/{token}:
+    get:
+      tags: [Unsubscribe]
+      summary: Legacy unsubscribe endpoint
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Landing page (HTML or JSON)
+          content:
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsubscribeStatusResponse"
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+  /ready:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      security: []
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"

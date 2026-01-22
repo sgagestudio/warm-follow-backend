@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RequestIdFilter extends OncePerRequestFilter {
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
     public static final String IDEMPOTENCY_HEADER = "Idempotency-Key";
+    public static final String WORKSPACE_ID_HEADER = "X-Workspace-Id";
 
     @Override
     protected void doFilterInternal(
@@ -27,7 +28,8 @@ public class RequestIdFilter extends OncePerRequestFilter {
         String ip = extractClientIp(request);
         String userAgent = request.getHeader("User-Agent");
         String idempotencyKey = request.getHeader(IDEMPOTENCY_HEADER);
-        RequestContextHolder.set(new RequestContext(requestId, ip, userAgent, idempotencyKey));
+        String workspaceId = request.getHeader(WORKSPACE_ID_HEADER);
+        RequestContextHolder.set(new RequestContext(requestId, ip, userAgent, idempotencyKey, workspaceId));
         response.setHeader(REQUEST_ID_HEADER, requestId);
         try {
             filterChain.doFilter(request, response);

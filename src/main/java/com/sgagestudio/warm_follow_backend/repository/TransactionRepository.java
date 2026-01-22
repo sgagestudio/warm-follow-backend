@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface TransactionRepository extends JpaRepository<Transaction, UUID>, JpaSpecificationExecutor<Transaction> {
-    Optional<Transaction> findFirstByIdempotencyKeyAndReminder_OwnerUserId(String idempotencyKey, UUID ownerUserId);
+    Optional<Transaction> findFirstByIdempotencyKeyAndWorkspaceId(String idempotencyKey, UUID workspaceId);
 
-    Optional<Transaction> findByIdAndReminder_OwnerUserId(UUID id, UUID ownerUserId);
+    Optional<Transaction> findByIdAndWorkspaceId(UUID id, UUID workspaceId);
 }

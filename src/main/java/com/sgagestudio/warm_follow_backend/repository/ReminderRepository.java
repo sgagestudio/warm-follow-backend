@@ -11,9 +11,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface ReminderRepository extends JpaRepository<Reminder, UUID>, JpaSpecificationExecutor<Reminder> {
-    Optional<Reminder> findByIdAndOwnerUserId(UUID id, UUID ownerUserId);
+    Optional<Reminder> findByIdAndWorkspaceId(UUID id, UUID workspaceId);
 
-    boolean existsByTemplate_IdAndOwnerUserIdAndStatusIn(Long templateId, UUID ownerUserId, Collection<ReminderStatus> statuses);
+    boolean existsByTemplate_IdAndWorkspaceIdAndStatusIn(Long templateId, UUID workspaceId, Collection<ReminderStatus> statuses);
+
+    boolean existsByWorkspaceIdAndStatus(UUID workspaceId, ReminderStatus status);
 
     List<Reminder> findByStatusInAndNextRunLessThanEqual(Collection<ReminderStatus> statuses, Instant nextRun);
 }

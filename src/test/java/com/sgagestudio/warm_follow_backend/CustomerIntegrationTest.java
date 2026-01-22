@@ -32,6 +32,9 @@ class CustomerIntegrationTest extends AbstractIntegrationTest {
                 "Smith",
                 "alice@example.com",
                 "+11111111",
+                List.of("vip"),
+                "es-ES",
+                "Europe/Madrid",
                 ConsentStatus.granted,
                 List.of("email"),
                 "web",
@@ -50,7 +53,7 @@ class CustomerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private String registerAndGetAccessToken(String email) throws Exception {
-        RegisterRequest register = new RegisterRequest(email, "Owner", "StrongPass1");
+        RegisterRequest register = new RegisterRequest(email, "Owner", "Customer Workspace", "StrongPass1");
         String registerJson = objectMapper.writeValueAsString(register);
         String response = mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

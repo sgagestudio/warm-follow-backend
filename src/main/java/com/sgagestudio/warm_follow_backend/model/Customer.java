@@ -22,6 +22,9 @@ public class Customer {
     @UuidGenerator
     private UUID id;
 
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
     @Column(name = "owner_user_id", nullable = false)
     private UUID ownerUserId;
 
@@ -34,6 +37,14 @@ public class Customer {
     private String email;
 
     private String phone;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "tags", columnDefinition = "text[]", nullable = false)
+    private String[] tags;
+
+    private String locale;
+
+    private String timezone;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "consent_status", nullable = false)
@@ -51,6 +62,21 @@ public class Customer {
 
     @Column(name = "consent_proof_ref")
     private String consentProofRef;
+
+    @Column(name = "do_not_email", nullable = false)
+    private boolean doNotEmail;
+
+    @Column(name = "do_not_sms", nullable = false)
+    private boolean doNotSms;
+
+    @Column(name = "email_bounce_reason")
+    private String emailBounceReason;
+
+    @Column(name = "email_bounce_at")
+    private Instant emailBounceAt;
+
+    @Column(name = "email_complaint_at")
+    private Instant emailComplaintAt;
 
     @Column(name = "is_erased", nullable = false)
     private boolean erased;
@@ -74,6 +100,9 @@ public class Customer {
         if (consentChannels == null) {
             consentChannels = new String[] {"email"};
         }
+        if (tags == null) {
+            tags = new String[] {};
+        }
     }
 
     @PreUpdate
@@ -95,6 +124,14 @@ public class Customer {
 
     public void setOwnerUserId(UUID ownerUserId) {
         this.ownerUserId = ownerUserId;
+    }
+
+    public UUID getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(UUID workspaceId) {
+        this.workspaceId = workspaceId;
     }
 
     public String getFirstName() {
@@ -127,6 +164,30 @@ public class Customer {
 
     public void setPhone(String phone) {
         this.phone = phone;
+    }
+
+    public String[] getTags() {
+        return tags;
+    }
+
+    public void setTags(String[] tags) {
+        this.tags = tags;
+    }
+
+    public String getLocale() {
+        return locale;
+    }
+
+    public void setLocale(String locale) {
+        this.locale = locale;
+    }
+
+    public String getTimezone() {
+        return timezone;
+    }
+
+    public void setTimezone(String timezone) {
+        this.timezone = timezone;
     }
 
     public ConsentStatus getConsentStatus() {
@@ -167,6 +228,46 @@ public class Customer {
 
     public void setConsentProofRef(String consentProofRef) {
         this.consentProofRef = consentProofRef;
+    }
+
+    public boolean isDoNotEmail() {
+        return doNotEmail;
+    }
+
+    public void setDoNotEmail(boolean doNotEmail) {
+        this.doNotEmail = doNotEmail;
+    }
+
+    public boolean isDoNotSms() {
+        return doNotSms;
+    }
+
+    public void setDoNotSms(boolean doNotSms) {
+        this.doNotSms = doNotSms;
+    }
+
+    public String getEmailBounceReason() {
+        return emailBounceReason;
+    }
+
+    public void setEmailBounceReason(String emailBounceReason) {
+        this.emailBounceReason = emailBounceReason;
+    }
+
+    public Instant getEmailBounceAt() {
+        return emailBounceAt;
+    }
+
+    public void setEmailBounceAt(Instant emailBounceAt) {
+        this.emailBounceAt = emailBounceAt;
+    }
+
+    public Instant getEmailComplaintAt() {
+        return emailComplaintAt;
+    }
+
+    public void setEmailComplaintAt(Instant emailComplaintAt) {
+        this.emailComplaintAt = emailComplaintAt;
     }
 
     public boolean isErased() {

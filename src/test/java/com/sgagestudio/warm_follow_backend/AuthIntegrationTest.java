@@ -21,7 +21,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void registerAndLogin() throws Exception {
-        RegisterRequest register = new RegisterRequest("user@example.com", "Test User", "StrongPass1");
+        RegisterRequest register = new RegisterRequest("user@example.com", "Test User", "Test Workspace", "StrongPass1");
         String registerJson = objectMapper.writeValueAsString(register);
         String registerResponse = mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

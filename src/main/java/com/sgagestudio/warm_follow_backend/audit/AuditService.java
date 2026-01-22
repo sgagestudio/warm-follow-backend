@@ -12,6 +12,7 @@ import com.sgagestudio.warm_follow_backend.util.RequestContextHolder;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class AuditService {
@@ -33,7 +34,16 @@ public class AuditService {
     }
 
     public void audit(String entityType, String entityId, String action, Object before, Object after) {
+        auditInternal(null, entityType, entityId, action, before, after);
+    }
+
+    public void audit(UUID workspaceId, String entityType, String entityId, String action, Object before, Object after) {
+        auditInternal(workspaceId, entityType, entityId, action, before, after);
+    }
+
+    private void auditInternal(UUID workspaceId, String entityType, String entityId, String action, Object before, Object after) {
         AuditEvent event = new AuditEvent();
+        event.setWorkspaceId(resolveWorkspaceId(workspaceId));
         event.setEntityType(entityType);
         event.setEntityId(entityId);
         event.setAction(action);
@@ -56,5 +66,24 @@ public class AuditService {
             userRepository.findById(userId).ifPresent(event::setActorUser);
         }
         auditEventRepository.save(event);
+    }
+
+    private UUID resolveWorkspaceId(UUID workspaceId) {
+        if (workspaceId != null) {
+            return workspaceId;
+        }
+        String header = RequestContextHolder.get().map(RequestContext::workspaceId).orElse(null);
+        if (StringUtils.hasText(header)) {
+            try {
+                return UUID.fromString(header);
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalStateException("Invalid workspace id in request context");
+            }
+        }
+        AuthenticatedUser authenticatedUser = securityUtils.getAuthenticatedUserOrNull();
+        if (authenticatedUser != null && authenticatedUser.workspaceId() != null) {
+            return authenticatedUser.workspaceId();
+        }
+        throw new IllegalStateException("Workspace context not available for audit event");
     }
 }

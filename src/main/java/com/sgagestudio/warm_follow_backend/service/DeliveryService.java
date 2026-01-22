@@ -19,19 +19,23 @@ public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
     private final TransactionRepository transactionRepository;
     private final SecurityUtils securityUtils;
+    private final WorkspaceContextService workspaceContextService;
 
     public DeliveryService(
             DeliveryRepository deliveryRepository,
             TransactionRepository transactionRepository,
-            SecurityUtils securityUtils
+            SecurityUtils securityUtils,
+            WorkspaceContextService workspaceContextService
     ) {
         this.deliveryRepository = deliveryRepository;
         this.transactionRepository = transactionRepository;
         this.securityUtils = securityUtils;
+        this.workspaceContextService = workspaceContextService;
     }
 
     public List<DeliveryResponse> listByTransaction(UUID transactionId) {
-        Transaction tx = transactionRepository.findByIdAndReminder_OwnerUserId(transactionId, securityUtils.requireCurrentUserId())
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        Transaction tx = transactionRepository.findByIdAndWorkspaceId(transactionId, workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSACTION_NOT_FOUND", "Transaction not found"));
         return deliveryRepository.findByTransaction_Id(tx.getId()).stream()
                 .map(this::toResponse)
@@ -39,7 +43,8 @@ public class DeliveryService {
     }
 
     public DeliveryResponse getDelivery(UUID deliveryId) {
-        Delivery delivery = deliveryRepository.findByIdAndTransaction_Reminder_OwnerUserId(deliveryId, securityUtils.requireCurrentUserId())
+        UUID workspaceId = workspaceContextService.requireContext().workspace().getId();
+        Delivery delivery = deliveryRepository.findByIdAndWorkspaceId(deliveryId, workspaceId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "DELIVERY_NOT_FOUND", "Delivery not found"));
         return toResponse(delivery);
     }
@@ -47,11 +52,12 @@ public class DeliveryService {
     private DeliveryResponse toResponse(Delivery delivery) {
         return new DeliveryResponse(
                 delivery.getId(),
+                delivery.getReminderId(),
                 delivery.getTransaction().getId(),
-                delivery.getCustomer() != null ? delivery.getCustomer().getId() : null,
                 delivery.getChannel(),
-                delivery.getStatus(),
                 delivery.getProviderMessageId(),
+                delivery.getRecipient(),
+                delivery.getStatus(),
                 delivery.getErrorCode(),
                 delivery.getErrorMessage(),
                 delivery.getCreatedAt(),

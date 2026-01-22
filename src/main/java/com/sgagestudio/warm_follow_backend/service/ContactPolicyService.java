@@ -17,6 +17,12 @@ public class ContactPolicyService {
         if (!isContactable(customer)) {
             return false;
         }
+        if (channel == Channel.email && customer.isDoNotEmail()) {
+            return false;
+        }
+        if (channel == Channel.sms && customer.isDoNotSms()) {
+            return false;
+        }
         Set<String> channels = normalizeChannels(customer.getConsentChannels());
         if (channel == Channel.both) {
             return channels.contains("email") && channels.contains("sms");
@@ -26,6 +32,12 @@ public class ContactPolicyService {
 
     public boolean isContactable(Customer customer, DeliveryChannel channel) {
         if (!isContactable(customer)) {
+            return false;
+        }
+        if (channel == DeliveryChannel.email && customer.isDoNotEmail()) {
+            return false;
+        }
+        if (channel == DeliveryChannel.sms && customer.isDoNotSms()) {
             return false;
         }
         Set<String> channels = normalizeChannels(customer.getConsentChannels());

@@ -5,16 +5,22 @@ import com.sgagestudio.warm_follow_backend.config.GoogleOAuthProperties;
 import com.sgagestudio.warm_follow_backend.config.JwtProperties;
 import com.sgagestudio.warm_follow_backend.dto.AuthResponse;
 import com.sgagestudio.warm_follow_backend.dto.OauthAuthorizeResponse;
+import com.sgagestudio.warm_follow_backend.dto.UserResponse;
+import com.sgagestudio.warm_follow_backend.dto.WorkspaceResponse;
 import com.sgagestudio.warm_follow_backend.model.AuthProvider;
 import com.sgagestudio.warm_follow_backend.model.AuthType;
 import com.sgagestudio.warm_follow_backend.model.OauthIdentity;
 import com.sgagestudio.warm_follow_backend.model.User;
+import com.sgagestudio.warm_follow_backend.model.Workspace;
+import com.sgagestudio.warm_follow_backend.model.WorkspaceMembership;
 import com.sgagestudio.warm_follow_backend.provider.GoogleOAuthClient;
 import com.sgagestudio.warm_follow_backend.repository.OauthIdentityRepository;
 import com.sgagestudio.warm_follow_backend.repository.UserRepository;
+import com.sgagestudio.warm_follow_backend.repository.WorkspaceRepository;
 import com.sgagestudio.warm_follow_backend.security.AuthenticatedUser;
 import com.sgagestudio.warm_follow_backend.security.JwtService;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
@@ -33,6 +39,8 @@ public class GoogleOAuthService {
     private final JwtProperties jwtProperties;
     private final RefreshTokenService refreshTokenService;
     private final AuditService auditService;
+    private final WorkspaceProvisioningService workspaceProvisioningService;
+    private final WorkspaceRepository workspaceRepository;
 
     public GoogleOAuthService(
             GoogleOAuthProperties properties,
@@ -43,7 +51,9 @@ public class GoogleOAuthService {
             JwtService jwtService,
             JwtProperties jwtProperties,
             RefreshTokenService refreshTokenService,
-            AuditService auditService
+            AuditService auditService,
+            WorkspaceProvisioningService workspaceProvisioningService,
+            WorkspaceRepository workspaceRepository
     ) {
         this.properties = properties;
         this.stateService = stateService;
@@ -54,6 +64,8 @@ public class GoogleOAuthService {
         this.jwtProperties = jwtProperties;
         this.refreshTokenService = refreshTokenService;
         this.auditService = auditService;
+        this.workspaceProvisioningService = workspaceProvisioningService;
+        this.workspaceRepository = workspaceRepository;
     }
 
     public OauthAuthorizeResponse buildAuthorizeUrl() {
@@ -83,30 +95,32 @@ public class GoogleOAuthService {
                 .map(OauthIdentity::getUser)
                 .orElseGet(() -> upsertUserFromProfile(email, profile.subject()));
 
+        user.setLastLogin(Instant.now());
+        userRepository.save(user);
+        WorkspaceMembership membership = workspaceProvisioningService.ensureDefaultWorkspace(user, null);
         AuthenticatedUser principal = new AuthenticatedUser(
                 user.getId(),
                 user.getEmail(),
                 user.getProvider().name(),
-                user.getAuthType().name()
+                user.getAuthType().name(),
+                membership.getWorkspaceId(),
+                membership.getRole().name()
         );
         String accessToken = jwtService.createAccessToken(principal);
         RefreshTokenResult refreshToken = refreshTokenService.create(user, ip, userAgent);
         Duration ttl = jwtProperties.getAccessTokenTtl();
-        com.sgagestudio.warm_follow_backend.dto.UserResponse userResponse = new com.sgagestudio.warm_follow_backend.dto.UserResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getName(),
-                user.getProvider().name(),
-                user.getAuthType().name()
-        );
+        UserResponse userResponse = toUserResponse(user);
+        Workspace workspace = requireWorkspace(membership.getWorkspaceId());
         AuthResponse response = new AuthResponse(
                 accessToken,
                 refreshToken.rawToken(),
                 "Bearer",
                 ttl.getSeconds(),
-                userResponse
+                userResponse,
+                toWorkspaceResponse(workspace),
+                membership.getRole()
         );
-        auditService.audit("user", user.getId().toString(), "auth.oauth_login", null, userResponse);
+        auditService.audit(membership.getWorkspaceId(), "user", user.getId().toString(), "auth.oauth_login", null, userResponse);
         return response;
     }
 
@@ -133,5 +147,36 @@ public class GoogleOAuthService {
                     return oauthIdentityRepository.save(identity);
                 });
         return user;
+    }
+
+    private UserResponse toUserResponse(User user) {
+        return new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                user.getStatus().name(),
+                user.getLastLogin()
+        );
+    }
+
+    private WorkspaceResponse toWorkspaceResponse(Workspace workspace) {
+        return new WorkspaceResponse(
+                workspace.getId(),
+                workspace.getName(),
+                workspace.getPlan(),
+                workspace.getStatus(),
+                null,
+                workspace.getCreatedAt(),
+                workspace.getUpdatedAt()
+        );
+    }
+
+    private Workspace requireWorkspace(java.util.UUID workspaceId) {
+        return workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new com.sgagestudio.warm_follow_backend.util.ApiException(
+                        org.springframework.http.HttpStatus.NOT_FOUND,
+                        "WORKSPACE_NOT_FOUND",
+                        "Workspace not found"
+                ));
     }
 }

@@ -23,6 +23,9 @@ public class CustomerConsentEvent {
     @UuidGenerator
     private UUID id;
 
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
@@ -65,6 +68,14 @@ public class CustomerConsentEvent {
 
     public void setCustomer(Customer customer) {
         this.customer = customer;
+    }
+
+    public UUID getWorkspaceId() {
+        return workspaceId;
+    }
+
+    public void setWorkspaceId(UUID workspaceId) {
+        this.workspaceId = workspaceId;
     }
 
     public ConsentStatus getStatus() {
